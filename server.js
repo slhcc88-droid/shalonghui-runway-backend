@@ -132,11 +132,9 @@ app.post("/generate-video", rateLimit, requireActionSecret, async (req, res) => 
       duration,
     };
 
-    if (promptImage) {
-      payload.promptImage = promptImage;
-    }
-
-    const task = await client.imageToVideo.create(payload);
+    const task = promptImage
+      ? await client.imageToVideo.create({ ...payload, promptImage })
+      : await client.textToVideo.create(payload);
 
     res.json(publicTaskResponse(task));
   } catch (error) {
