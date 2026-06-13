@@ -1,0 +1,137 @@
+openapi: 3.1.0
+info:
+  title: Shalonghui Runway Video Backend
+  version: 1.0.0
+  description: Generate Runway video and image assets through a secure backend.
+servers:
+  - url: https://shalonghui-runway.onrender.com
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Check backend health.
+      responses:
+        "200":
+          description: Backend is online.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  service:
+                    type: string
+
+  /generate-video:
+    post:
+      operationId: generateRunwayVideo
+      summary: Generate a short AI video clip.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - promptText
+              properties:
+                promptText:
+                  type: string
+                  description: English prompt describing the video.
+                promptImage:
+                  type: string
+                  description: Optional image URL or data URI used as a reference image.
+                model:
+                  type: string
+                  default: gen4.5
+                ratio:
+                  type: string
+                  default: "720:1280"
+                duration:
+                  type: integer
+                  default: 5
+      responses:
+        "200":
+          description: Runway video task was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunwayTaskResponse"
+
+  /generate-image:
+    post:
+      operationId: generateRunwayImage
+      summary: Generate an AI image.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - promptText
+              properties:
+                promptText:
+                  type: string
+                  description: English prompt describing the image.
+                model:
+                  type: string
+                  default: gen4_image
+                ratio:
+                  type: string
+                  default: "1080:1920"
+                referenceImages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      uri:
+                        type: string
+                      tag:
+                        type: string
+      responses:
+        "200":
+          description: Runway image task was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunwayTaskResponse"
+
+  /get-task/{taskId}:
+    get:
+      operationId: getRunwayTask
+      summary: Get Runway task status and output.
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runway task ID.
+      responses:
+        "200":
+          description: Runway task status and output.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunwayTaskResponse"
+
+components:
+  schemas:
+    RunwayTaskResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        taskId:
+          type: string
+        status:
+          type: string
+        output:
+          type: array
+          items:
+            type: string
+        task:
+          type: object
+          additionalProperties: true

@@ -1,0 +1,20 @@
+{
+  "name": "shalonghui-runway-backend",
+  "version": "1.0.0",
+  "description": "Secure GPT Action backend for generating Runway video and image assets.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "dependencies": {
+    "@runwayml/sdk": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
