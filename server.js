@@ -83,21 +83,104 @@ function handleRunwayError(res, error, fallbackMessage) {
   });
 }
 
+function getTaskId(task) {
+  return task?.id || task?.taskId || task?.task_id || task?.job_id || null;
+}
+
+function getOutputUrls(task) {
+  if (!task?.output) {
+    return [];
+  }
+
+  if (Array.isArray(task.output)) {
+    return task.output
+      .map((item) => {
+        if (typeof item === "string") return item;
+        return item?.url || item?.uri || item?.video_url || item?.image_url || null;
+      })
+      .filter(Boolean);
+  }
+
+  if (typeof task.output === "string") {
+    return [task.output];
+  }
+
+  return [task.output.url, task.output.uri, task.output.video_url, task.output.image_url].filter(Boolean);
+}
+
+function normalizeStatus(status) {
+  const value = String(status || "submitted").toLowerCase();
+
+  if (["succeeded", "success", "completed", "complete"].includes(value)) {
+    return "completed";
+  }
+
+  if (["failed", "failure", "cancelled", "canceled"].includes(value)) {
+    return "failed";
+  }
+
+  if (["running", "processing", "pending", "queued", "submitted", "throttled"].includes(value)) {
+    return "processing";
+  }
+
+  return value;
+}
+
 function publicTaskResponse(task) {
+  const taskId = getTaskId(task);
+  const outputUrls = getOutputUrls(task);
+  const status = normalizeStatus(task?.status);
+  const videoUrl = outputUrls.find((url) => /\.(mp4|mov|webm)(\?|$)/i.test(url)) || outputUrls[0] || null;
+
   return {
     ok: true,
-    taskId: task.id,
-    status: task.status,
-    output: task.output,
+    status,
+    raw_status: task?.status || null,
+    task_id: taskId,
+    taskId,
+    job_id: taskId,
+    video_url: videoUrl,
+    output: outputUrls,
+    message: videoUrl
+      ? "Runway task completed. The generated asset URL is available in video_url."
+      : taskId
+        ? "Runway task submitted or still processing. Save task_id and query /get-task/{task_id} later."
+        : "Runway response did not include a task ID or output URL. Check Runway API response and permissions.",
     task,
   };
+}
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function retrieveTask(taskId) {
+  return client.tasks.retrieve(taskId);
+}
+
+async function waitForTask(taskId, maxWaitSeconds = 45) {
+  const deadline = Date.now() + maxWaitSeconds * 1000;
+  let latestTask = await retrieveTask(taskId);
+
+  while (Date.now() < deadline) {
+    const response = publicTaskResponse(latestTask);
+
+    if (response.status === "completed" || response.status === "failed") {
+      return latestTask;
+    }
+
+    await sleep(5000);
+    latestTask = await retrieveTask(taskId);
+  }
+
+  return latestTask;
 }
 
 app.get("/", (req, res) => {
   res.json({
     ok: true,
     service: "shalonghui-runway-backend",
-    endpoints: ["/health", "/generate-video", "/generate-image", "/get-task/:taskId"],
+    endpoints: ["/health", "/generate-video", "/generate-video-and-wait", "/generate-image", "/get-task/:taskId"],
   });
 });
 
@@ -137,6 +220,52 @@ app.post("/generate-video", rateLimit, requireActionSecret, async (req, res) => 
       : await client.textToVideo.create(payload);
 
     res.json(publicTaskResponse(task));
+  } catch (error) {
+    handleRunwayError(res, error, "Runway video generation failed");
+  }
+});
+
+app.post("/generate-video-and-wait", rateLimit, requireActionSecret, async (req, res) => {
+  try {
+    const {
+      promptText,
+      promptImage,
+      model = "gen4.5",
+      ratio = "720:1280",
+      duration = 5,
+      maxWaitSeconds = 45,
+    } = req.body;
+
+    if (!promptText) {
+      return res.status(400).json({
+        ok: false,
+        error: "promptText is required",
+      });
+    }
+
+    const payload = {
+      model,
+      promptText,
+      ratio,
+      duration,
+    };
+
+    const createdTask = promptImage
+      ? await client.imageToVideo.create({ ...payload, promptImage })
+      : await client.textToVideo.create(payload);
+
+    const taskId = getTaskId(createdTask);
+
+    if (!taskId) {
+      return res.json(publicTaskResponse(createdTask));
+    }
+
+    const safeWaitSeconds = Math.max(0, Math.min(Number(maxWaitSeconds) || 45, 90));
+    const latestTask = safeWaitSeconds > 0
+      ? await waitForTask(taskId, safeWaitSeconds)
+      : createdTask;
+
+    res.json(publicTaskResponse(latestTask));
   } catch (error) {
     handleRunwayError(res, error, "Runway video generation failed");
   }
