@@ -26,7 +26,7 @@ paths:
   /generate-video:
     post:
       operationId: generateRunwayVideo
-      summary: Generate a short AI video clip.
+      summary: Submit a short AI video clip generation task and return a task ID immediately.
       requestBody:
         required: true
         content:
@@ -53,7 +53,48 @@ paths:
                   default: 5
       responses:
         "200":
-          description: Runway video task was created.
+          description: Runway video task was created. Save task_id for later status checks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunwayTaskResponse"
+
+  /generate-video-and-wait:
+    post:
+      operationId: generateRunwayVideoAndWait
+      summary: Submit a Runway video task and wait briefly for completion.
+      description: Use this when the user wants GPT to generate a video automatically. If the video is not ready before maxWaitSeconds, this still returns task_id so the user can query later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - promptText
+              properties:
+                promptText:
+                  type: string
+                  description: English prompt describing the video.
+                promptImage:
+                  type: string
+                  description: Optional image URL or data URI used as a reference image.
+                model:
+                  type: string
+                  default: gen4.5
+                ratio:
+                  type: string
+                  default: "720:1280"
+                duration:
+                  type: integer
+                  default: 5
+                maxWaitSeconds:
+                  type: integer
+                  default: 45
+                  description: Maximum seconds for the backend to poll Runway before returning task_id. Maximum allowed by backend is 90.
+      responses:
+        "200":
+          description: Runway video task result, either completed with video_url or processing with task_id.
           content:
             application/json:
               schema:
@@ -124,14 +165,31 @@ components:
       properties:
         ok:
           type: boolean
-        taskId:
-          type: string
         status:
           type: string
+          description: Normalized status. Usually processing, completed, or failed.
+        raw_status:
+          type: string
+          description: Original Runway status.
+        task_id:
+          type: string
+          description: Runway task ID. Use this for later task queries.
+        taskId:
+          type: string
+          description: Same value as task_id, provided for compatibility.
+        job_id:
+          type: string
+          description: Same value as task_id, provided for compatibility.
+        video_url:
+          type: string
+          nullable: true
+          description: Generated video URL when available.
         output:
           type: array
           items:
             type: string
+        message:
+          type: string
         task:
           type: object
           additionalProperties: true
