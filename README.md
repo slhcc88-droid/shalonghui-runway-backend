@@ -67,6 +67,47 @@ curl -X GET http://localhost:3000/get-task/你的taskId \
   -H "x-action-secret: 你的ACTION_SECRET"
 ```
 
+## 自动生成并短暂等待
+
+这个接口更适合 GPT Action 使用：如果 Runway 很快完成，会直接返回 `video_url`；如果还在生成，会返回 `task_id`，让 GPT 后续继续查询。
+
+```bash
+curl -X POST http://localhost:3000/generate-video-and-wait \
+  -H "Content-Type: application/json" \
+  -H "x-action-secret: 你的ACTION_SECRET" \
+  -d '{
+    "promptText": "A luxury black and electric blue technology brand opening scene, metallic dragon light silhouette, cinematic commercial style, vertical 9:16, no text, no people",
+    "ratio": "720:1280",
+    "duration": 5,
+    "maxWaitSeconds": 45
+  }'
+```
+
+成功创建任务但视频还没完成时，会返回类似：
+
+```json
+{
+  "ok": true,
+  "status": "processing",
+  "task_id": "真实任务ID",
+  "taskId": "真实任务ID",
+  "job_id": "真实任务ID",
+  "video_url": null,
+  "message": "Runway task submitted or still processing. Save task_id and query /get-task/{task_id} later."
+}
+```
+
+完成时会返回：
+
+```json
+{
+  "ok": true,
+  "status": "completed",
+  "task_id": "真实任务ID",
+  "video_url": "https://生成的视频链接.mp4"
+}
+```
+
 ## 部署到 Render
 
 1. 新建 GitHub 仓库并上传本项目。
@@ -100,12 +141,13 @@ curl -X GET http://localhost:3000/get-task/你的taskId \
 3. 公开平台版本不得包含包赢、稳赚、暴富、赔率、诱导充值、绝对安全、100%保障等表达。
 4. 默认使用 720:1280 竖屏比例。
 5. 默认视频时长 5 秒，除非用户指定。
-6. 调用 generateRunwayVideo 创建视频任务。
-7. 返回 taskId、状态和下一步建议。
-8. 如果用户要求先生成视觉图，再转视频，先调用 generateRunwayImage。
-9. 用户询问任务进度时，调用 getRunwayTask。
-10. 不要向用户索要或显示 Runway API Key。
-11. 不要生成明显诱导赌博、规避平台审核、承诺收益的内容。
+6. 优先调用 generateRunwayVideoAndWait。若该接口返回 video_url，直接展示视频链接。
+7. 如果接口返回 status=processing/submitted 且包含 task_id，必须把 task_id 明确告诉用户，并提示稍后查询。
+8. 如果用户询问任务进度，调用 getRunwayTask，并使用上次返回的 task_id。
+9. 如果接口没有返回 task_id、taskId、job_id、id 或 video_url，必须说明“Runway 接口返回异常”，不要说视频已提交成功，也不要重复创建新任务。
+10. 如果用户要求先生成视觉图，再转视频，先调用 generateRunwayImage。
+11. 不要向用户索要或显示 Runway API Key。
+12. 不要生成明显诱导赌博、规避平台审核、承诺收益的内容。
 ```
 
 ## 第一版镜头建议
